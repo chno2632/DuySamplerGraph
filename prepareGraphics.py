@@ -1,5 +1,7 @@
 
 MAX_VALUE_ADC = 16383 # 14 bits, 0x3fff
+UFAC = 0.00115787 # Relation between sample value and actual voltage.
+                  #  U = ns * (5 *77,4/20,4)/16384 =  1,15787* 10^-3 = 0,00115787
 RAW_DATA_FILE = "SMPLOG3_240523.txt"
 NOMINAL_FS = 1 # The nominal sampling time in seconds
 DISRUPT_FAC = 0.15 # (15%) Factor used to define if two intervals are consecutive or disrupted
@@ -13,7 +15,7 @@ class graphInterval:
         #  defined to be a disruption between the intervals
         self.compFs = compFs           # compensated sampling time
         self.graphX = []               # the x-axis result list
-        self.graphYux = []             # the y-axis result list in unixtimestamps
+        self.graphXux = []             # the x-axis result list in unixtimestamps
         self.graphY = []               # the y-axis result in seconds
 
 class graph:
@@ -66,14 +68,18 @@ graph.content() # prints content of graph object
 # Create interval objects
 intervalList = []
 for i in range(len(timeStamps)):
-    intervalList.append(graphInterval(i+1, timeStamps[i], sampleCnt[i], 0.0))
+    intervalList.append(graphInterval(i+1, timeStamps[i], sampleCnt[i], 1.0))
 
 # Read the sample values to the interval list
 checkNmbSamples = 0
+rawDataIndex = 0
 for i in range(len(intervalList)):
+    rawDataIndex += 1  # Skip timestamp value
     for nmbSamples in range(intervalList[i].samples):
-        intervalList[i].graphX.append(int(rawData[nmbSamples + 1]))
+        intervalList[i].graphY.append(UFAC * float(rawData[rawDataIndex]))
         checkNmbSamples += 1
+        rawDataIndex += 1
+
 
 #print(checkNmbSamples)
 
@@ -81,14 +87,15 @@ for i in range(len(intervalList)):
 fs = 0
 for i in range(len(intervalList) - 1):
     intervalList[i].compFs = float((float(intervalList[i + 1].startTime) - float(intervalList[i].startTime)) / float(intervalList[i].samples))
+    if (intervalList[i].compFs > NOMINAL_FS + DISRUPT_FAC):
+        intervalList[i].compFs = 1.0
+
 
 # Print all interval objects
 for i in range(len(intervalList)):
     print(intervalList[i].intervalNo, intervalList[i].samples, intervalList[i].startTime, intervalList[i].compFs)
 
 #Create the compensated x-axes
-
-
 checkNmbSamples = 0
 fs = 0
 timeStamp = 0
@@ -96,15 +103,30 @@ for i in range(len(intervalList)):
     timeStamp = intervalList[i].startTime
     fs = intervalList[i].compFs
     for nmbSamples in range(intervalList[i].samples):
-        intervalList[i].graphYux.append(int(round(timeStamp)))
-        timeStamp += fs + NOMINAL_FS
+        intervalList[i].graphXux.append(int(round(timeStamp)))
+        #timeStamp += fs + NOMINAL_FS
+        timeStamp += fs
 
+# f = open("timeStampFileAfterCompNew.txt", "w")
+# for i in range(len(intervalList)):
+#     for nmbSamples in range(intervalList[i].samples):
+#         f.write(f"\n{intervalList[i].graphXux[nmbSamples]}")
+# f.close()
 
-# Print file and compare
-
-
-f = open("timeStampFileAfterCompNew.txt", "w")
+# Create x-axis time in seconds
 for i in range(len(intervalList)):
+    # Create time axis in seconds, extracting seconds from unixtime
+    timeStamp = datetime.datetime.fromtimestamp(intervalList[i].startTime)
+    ts = int(timeStamp.strftime('%S'))
+    fs = intervalList[i].compFs
     for nmbSamples in range(intervalList[i].samples):
-        f.write(f"\n{nmbSamples}")
-f.close()
+        intervalList[i].graphX.append(int(round(ts)))
+        ts += fs
+    plt.plot(intervalList[i].graphX, intervalList[i].graphY, color='r', linestyle='--', marker='.')
+    plt.xlabel(timeStamp.strftime('%Y-%m-%d %H:%M:%S'))
+    #myVar = plt.axes.Axes.set_axis_locator
+    plt.show()
+
+
+
+
